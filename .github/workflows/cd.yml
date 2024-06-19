@@ -1,0 +1,35 @@
+name: cd
+
+on:
+  workflow_dispatch:
+    inputs:
+      envronment:
+        type: choice
+        description: 'Ambiente de deployment'     
+        required: true
+        options: 
+        - dev
+        - prod
+      imageTag:
+        required: true
+        description: 'Test scenario imageTag'  
+
+jobs:
+  printInputs:
+    runs-on: ubuntu-latest
+    steps:
+    - run: |
+        echo "Ambiente de deployment: ${{ github.event.inputs.envronment }}"
+        echo "imageTag: ${{ github.event.inputs.imageTag }}" 
+        echo "${{ fromJSON('["123.456", "987.654"]')[github.event.inputs.envronment == 'prod'] }}"
+
+    - name: multiple command
+      uses: appleboy/ssh-action@v1.0.3
+      with:
+        host: ${{ github.event.inputs.envronment == 'prod' && '34.72.116.151' || '34.72.116.51' }} 
+        username: wlfj
+        key: ${{ secrets.SSH_KEY }}
+        port: 22
+        script: |
+          whoami
+          ls -al
