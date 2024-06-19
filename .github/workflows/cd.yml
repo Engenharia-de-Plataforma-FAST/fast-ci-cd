@@ -1,0 +1,37 @@
+name: cd
+
+on:
+  workflow_dispatch:
+    inputs:
+      envronment:
+        type: choice
+        description: 'Ambiente de deployment'     
+        required: true
+        options: 
+        - dev
+        - prod
+      imageTag:
+        required: true
+        description: 'Test scenario imageTag'  
+
+jobs:
+  deployment:
+    runs-on: ubuntu-latest
+    steps:
+    - run: |
+        echo "Ambiente de deployment: ${{ github.event.inputs.envronment }}"
+        echo "imageTag: ${{ github.event.inputs.imageTag }}" 
+
+    - name: Deploy service
+      uses: appleboy/ssh-action@v1.0.3
+      with:
+        host: ${{ github.event.inputs.envronment == 'prod' && '34.72.116.151' || '34.72.116.51' }} 
+        username: wlfj
+        key: ${{ secrets.SSH_KEY }}
+        port: 22
+        script: |
+          sudo mkdir -p /todo-fast
+          sudo docker service rm fast-ci-todo | true
+          sudo docker service create --name fast-ci-todo --replicas=5 -p 80:3000 \
+            --mount type=bind,source=/todo-fast,destination=/etc/todos \
+            hardsource/fast-ci:${{ github.event.inputs.imageTag }}
