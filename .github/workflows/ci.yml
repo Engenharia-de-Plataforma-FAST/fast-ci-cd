@@ -4,6 +4,9 @@ on:
   push:
     branches:
       - 'main'
+  pull_request:
+    branches:
+      - main
 
 jobs:
   docker:
@@ -25,4 +28,13 @@ jobs:
         uses: docker/build-push-action@v5
         with:
           push: true
-          tags: hardsource/fast-ci:${{ github.event.number == 0 && 'latest' ||  format('PR-{0}', github.event.number) }}
+          tags: hardsource/fast-ci:${{ github.event.number == 0 && 'latest' || format('PR-{0}', github.event.number) }}
+
+      - name: Disparar deployment em dev
+        uses: benc-uk/workflow-dispatch@v1
+        env:
+          IMAGE_TAG: ${{ github.event.number == 0 && 'latest' || format('PR-{0}', github.event.number) }}
+        with:
+          workflow: cd.yml
+          inputs: '{ "envronment": "dev", "imageTag": "${{ env.IMAGE_TAG }}" }'
+          token: "${{ secrets.TOKEN_GITHUB }}"

@@ -12,7 +12,8 @@ on:
         - prod
       imageTag:
         required: true
-        description: 'Test scenario imageTag'  
+        description: 'Deployment image tag'
+        default: 'latest'
 
 jobs:
   deployment:
@@ -21,6 +22,12 @@ jobs:
     - run: |
         echo "Ambiente de deployment: ${{ github.event.inputs.envronment }}"
         echo "imageTag: ${{ github.event.inputs.imageTag }}" 
+
+    - name: Discord Notification
+      uses: tsickert/discord-webhook@v5.3.0
+      with:
+        webhook-url: ${{ secrets.WEBHOOK_URL }}
+        content: "Deployment do app FAST-CI-CD:**${{ github.event.inputs.imageTag }}** disparado por **${{ github.actor }}** para o ambiente **${{ github.event.inputs.envronment }}**"
 
     - name: Deploy service
       uses: appleboy/ssh-action@v1.0.3
