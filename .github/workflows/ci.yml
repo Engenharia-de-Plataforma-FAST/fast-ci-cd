@@ -4,6 +4,8 @@ on:
   push:
     branches:
       - 'main'
+    tags:
+      - 'v*'
   pull_request:
     branches:
       - 'main'
@@ -83,7 +85,7 @@ jobs:
   docker:
     name: Docker build and publish
     runs-on: ubuntu-latest
-    needs: 
+    needs:
       - tests
     steps:
       - name: Set up QEMU
@@ -98,11 +100,50 @@ jobs:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
 
-      - name: Build and push
+      - name: Extract metadata (tags and labels) for Docker
+        id: tag
+        uses: docker/metadata-action@v5
+        with:
+          images: waltenbergjr/fast-ci-cd
+          tags: |
+            # Se o trigger foi uma tag (ex: v1.0.0), a imagem Docker terá a tag 'v1.0.0'
+            type=ref,event=tag
+            # Se o trigger foi um push na branch 'main', a imagem terá duas tags: 'latest' e o hash do commit (ex: f1a2b3c)
+            type=raw,value=latest,enable={{is_default_branch}}
+            # Se o trigger foi um pull request, a imagem terá a tag 'PR-numero-do-pr'
+            type=ref,event=pr,prefix=PR-
+            type=sha
+
+      - name: Build and push Docker image
         uses: docker/build-push-action@v5
         with:
           push: true
-          tags: waltenbergjr/fast-ci-cd:${{ github.event.number == 0 && 'latest' || format('PR-{0}', github.event.number) }}
+          tags: ${{ steps.tag.outputs.tags }}
+          labels: ${{ steps.tag.outputs.labels }}
+
+      - name: Format tags for PR comment
+        if: github.event_name == 'pull_request'
+        id: format_tags
+        run: |
+          # Pega o output de tags e troca vírgulas por quebras de linha
+          TAGS_BODY=$(echo "${{ steps.tag.outputs.tags }}" | sed 's/,/\n/g')
+          echo "comment_body<<EOF" >> $GITHUB_OUTPUT
+          echo "$TAGS_BODY" >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
+
+      - name: Create or update PR comment
+        if: github.event_name == 'pull_request'
+        uses: peter-evans/create-or-update-comment@v4
+        with:
+          token: ${{ secrets.TOKEN_GITHUB }}
+          comment-identifier: 'docker-published-tags-comment'
+          issue-number: ${{ github.event.pull_request.number }}
+          edit-mode: replace
+          body: |
+            ## ✅ Imagem publicada com sucesso!
+            **Tags publicadas:**
+            ```
+            ${{ steps.format_tags.outputs.comment_body }}
 
   deployment:
     name: Deployment trigger
