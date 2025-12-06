@@ -11,8 +11,20 @@ on:
       - 'main'
 
 jobs:
+  # Garante que as mensagens de commit seguem padrão (ex: feat: nova tela)
+  # commit-lint:
+  #   name: 📝 Commit Lint
+  #   runs-on: ubuntu-latest
+  #   if: github.event_name == 'pull_request'
+  #   steps:
+  #     - uses: actions/checkout@v4
+  #       with:
+  #         fetch-depth: 0
+  #     - name: Validate Commit Messages
+  #       uses: wagoid/commitlint-github-action@v5
+
   lint:
-    name: Lint
+    name: 🔍 Lint Code
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -23,11 +35,20 @@ jobs:
       - run: npm run ci
       - run: npm run lint || true
 
-  grype:
-    name: Grype
+  # ALTERNATIVA AO GRYPE
+  audit:
+    name: 🔒 NPM Audit Security
     runs-on: ubuntu-latest
-    needs: 
-      - lint
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '18.x'
+      - run: npm audit --audit-level=high || true
+
+  grype:
+    name: 🛡️ Grype Vuln Scan
+    runs-on: ubuntu-latest
     steps:
       - name: Checkout source code
         uses: actions/checkout@v4
@@ -40,10 +61,8 @@ jobs:
           output-format: table
 
   bearer:
-    name: Bearer
+    name: 🐻 Bearer SAST
     runs-on: ubuntu-latest
-    needs: 
-      - grype
     steps:
       - name: Checkout source code
         uses: actions/checkout@v4
@@ -54,11 +73,8 @@ jobs:
           exit-code: 0
 
   sonarcloud:
-    name: SonarCloud
+    name: 📊 SonarCloud Quality
     runs-on: ubuntu-latest
-    needs: 
-      # - grype
-      - bearer
     steps:
       - uses: actions/checkout@v4
         with:
@@ -69,10 +85,8 @@ jobs:
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
 
   tests:
-    name: Tests
+    name: 🧪 Unit Tests
     runs-on: ubuntu-latest
-    needs: 
-      - sonarcloud
     steps:
       - uses: actions/checkout@v4
       - name: Use Node.js
@@ -83,9 +97,13 @@ jobs:
       - run: sudo npm test
 
   docker:
-    name: Docker build and publish
+    name: 🐳 Docker build and publish
     runs-on: ubuntu-latest
     needs:
+      - lint
+      - grype
+      - bearer
+      - sonarcloud
       - tests
     steps:
       - name: Set up QEMU
@@ -108,9 +126,9 @@ jobs:
           tags: |
             # Se o trigger foi uma tag (ex: v1.0.0), a imagem Docker terá a tag 'v1.0.0'
             type=ref,event=tag
-            # Se o trigger foi um push na branch 'main', a imagem terá duas tags: 'latest' e o hash do commit (ex: f1a2b3c)
+            # Se o trigger foi um push na branch 'main', a imagem tag será: 'latest'
             type=raw,value=latest,enable={{is_default_branch}}
-            # Se o trigger foi um pull request, a imagem terá a tag 'PR-numero-do-pr'
+            # Se o trigger foi um pull request, a imagem terá a tag 'PR-<numero-do-pr>'
             type=ref,event=pr,prefix=PR-
             type=sha
 
@@ -120,6 +138,7 @@ jobs:
           push: true
           tags: ${{ steps.tag.outputs.tags }}
           labels: ${{ steps.tag.outputs.labels }}
+
 
       - name: Format tags for PR comment
         if: github.event_name == 'pull_request'
@@ -146,16 +165,17 @@ jobs:
             ${{ steps.format_tags.outputs.comment_body }}
 
   deployment:
-    name: Deployment trigger
+    name: 🚀 Deployment trigger
     runs-on: ubuntu-latest
     needs: 
       - docker
+    if: github.ref == 'refs/heads/main'
     steps:
       - name: Disparar deployment em dev
         uses: benc-uk/workflow-dispatch@v1
         env:
-          IMAGE_TAG: ${{ github.event.number == 0 && 'latest' || format('PR-{0}', github.event.number) }}
+          IMAGE_TAG: latest
         with:
           workflow: cd.yml
-          inputs: '{ "envronment": "dev", "imageTag": "${{ env.IMAGE_TAG }}" }'
+          inputs: '{ "environment": "dev", "imageTag": "${{ env.IMAGE_TAG }}" }'
           token: "${{ secrets.TOKEN_GITHUB }}"

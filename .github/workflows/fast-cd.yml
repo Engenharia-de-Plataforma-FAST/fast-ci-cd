@@ -1,0 +1,128 @@
+name: fast-cd
+
+on:
+  workflow_dispatch:
+    inputs:
+      environment:
+        type: choice
+        description: 'Ambiente de deployment'     
+        required: true
+        options: 
+        - dev
+        - prod
+      imageTag:
+        required: true
+        description: 'Tag da imagem Docker'
+        default: 'latest'
+
+run-name: Deploy ${{ inputs.environment }} - ${{ inputs.imageTag }}
+
+jobs:
+  prepare:
+    name: 🚧 Prepare Config
+    runs-on: ubuntu-latest
+    outputs:
+      host_ip: ${{ steps.set-ip.outputs.host_ip }}
+    steps:
+      - name: Set Environment IP
+        id: set-ip
+        run: |
+          if [ "${{ inputs.environment }}" == "prod" ]; then
+             echo "host_ip=3.238.181.0" >> $GITHUB_OUTPUT
+          else
+             echo "host_ip=98.92.103.38" >> $GITHUB_OUTPUT
+          fi
+
+      - name: 🔔 Initial Notification
+        uses: tsickert/discord-webhook@v5.3.0
+        with:
+          webhook-url: ${{ secrets.WEBHOOK_URL }}
+          content: "🚀 Deployment do app FAST-CI-CD:**${{ github.event.inputs.imageTag }}** disparado por **${{ github.actor }}** para o ambiente **${{ github.event.inputs.environment }}**..."
+
+  deploy:
+    name: 🚀 Deploy to Server
+    runs-on: ubuntu-latest
+    needs: prepare
+    environment: ${{ inputs.environment }}
+    env:
+      HOST_ENV: ${{ needs.prepare.outputs.host_ip }}
+      SSH_USER: "ubuntu"
+      SSH_PORT: 22
+    steps:
+      - name: Execute Remote Docker Command
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ env.HOST_ENV }}
+          username: ${{ env.SSH_USER }}
+          key: ${{ secrets.SSH_KEY }}
+          port: ${{ env.SSH_PORT }}
+          script: |
+            set -x
+            SERVICE_NAME="fast-ci-todo"
+            IMAGE="waltenbergjr/fast-ci-cd:${{ inputs.imageTag }}"
+            CONFIG_PATH="/home/${{ env.SSH_USER }}/.env.${{ inputs.environment }}"
+            
+            echo "Atualizando serviço: $SERVICE_NAME com a imagem $IMAGE"
+            sudo mkdir -p /todo-fast
+            
+            # Verifica se o serviço já existe
+            if sudo docker service inspect $SERVICE_NAME; then
+                echo "Serviço existe. Realizando Rolling Update..."
+                # Update mantém o serviço de pé enquanto atualiza (Zero Downtime)
+                sudo docker service update \
+                  --image $IMAGE \
+                  --force \
+                  $SERVICE_NAME
+            else
+                echo "Serviço não existe. Criando..."
+                sudo docker service create \
+                  --name $SERVICE_NAME \
+                  --replicas 3 \
+                  -p 80:3000 \
+                  --mount type=bind,source=/todo-fast,destination=/etc/todos \
+                  $IMAGE
+            fi
+
+  health-check:
+    name: 🩺 Smoke Test
+    runs-on: ubuntu-latest
+    needs:
+     - prepare
+     - deploy
+    env:
+      HOST_ENV: ${{ needs.prepare.outputs.host_ip }}
+    steps:
+      - name: Check HTTP Status
+        run: |
+          echo "Aguardando aplicação estabilizar..."
+          sleep 10 # Dá um tempo para o container subir
+          
+          # Tenta bater no IP. Se retornar 200 OK, passa. Se der erro, falha a pipeline.
+          # --fail faz o curl retornar erro se o HTTP status for >= 400
+          curl --fail http://${{ env.HOST_ENV }}:80 || exit 1
+          
+          echo "✅ Aplicação respondendo corretamente!"
+
+  notify-status:
+    name: 🔔 Final Notification
+    runs-on: ubuntu-latest
+    if: always()
+    needs:
+      - deploy
+      - health-check
+    env:
+      HOST_ENV: ${{ needs.prepare.outputs.host_ip }}
+    steps:
+      - name: Notify Success
+        if: needs.health-check.result == 'success'
+        uses: tsickert/discord-webhook@v5.3.0
+        with:
+          webhook-url: ${{ secrets.WEBHOOK_URL }}
+          content: "✅ **Deploy Concluído com Sucesso!**"
+
+      - name: Notify Failure
+        if: needs.health-check.result != 'success'
+        uses: tsickert/discord-webhook@v5.3.0
+        with:
+          webhook-url: ${{ secrets.WEBHOOK_URL }}
+          content: "🚨 **FALHA no Deploy**"

@@ -4,9 +4,9 @@ Sejam bem-vindos!! Este é o repositório dos laboratórios de CI/CD do FAST!
 
 ## Pipelines
 
-[![Actions status](https://github.com/HardSource/fast-ci/actions/workflows/ci.yml/badge.svg)](https://github.com/HardSource/fast-ci/actions/workflows/ci.yml)
+[![Actions status](https://github.com/HardSource/fast-ci/actions/workflows/fast-ci.yml/badge.svg)](https://github.com/HardSource/fast-ci/actions/workflows/fast-ci.yml)
 [![Codacy Badge](https://app.codacy.com/project/badge/Grade/166f2da2726f417f96877ff592082837)](https://app.codacy.com/gh/HardSource/fast-ci/dashboard?utm_source=gh&utm_medium=referral&utm_content=&utm_campaign=Badge_grade)
-[![Actions status](https://github.com/HardSource/fast-ci/actions/workflows/cd.yml/badge.svg)](https://github.com/HardSource/fast-ci/actions/workflows/cd.yml)
+[![Actions status](https://github.com/HardSource/fast-ci/actions/workflows/fast-cd.yml/badge.svg)](https://github.com/HardSource/fast-ci/actions/workflows/fast-cd.yml)
 
 ## Referências
 
@@ -35,7 +35,7 @@ $ yarn start
    * http://localhost:3000
 
 
-# Configuração de Secrets
+## Configuração de Secrets
 
 Para que as pipelines de CI/CD funcionem corretamente, é necessário configurar os seguintes secrets no seu repositório do GitHub. Acesse `Settings > Secrets and variables > Actions` e adicione os secrets abaixo.
 
